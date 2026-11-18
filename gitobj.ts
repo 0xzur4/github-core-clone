@@ -101,9 +101,46 @@ const CODE_BY_TYPE: Record<ObjectType, number> = {
  * Node's inflateSync ignores trailing bytes, so it cannot report the consumed
  * length; binary-search the smallest prefix that inflates to the expected size
  * (a shorter prefix is a truncated stream and throws, a longer one succeeds).
+ *
+ * Fast path: Node >= 22.5's `info: true` option returns the engine, whose
+ * `bytesWritten` is exactly the compressed bytes the stream consumed — one
+ * inflate per entry instead of ~log2(size) probes. Detected once at load so
+ * an older Node silently falls back to the binary search below.
  */
+const INFLATE_INFO_SUPPORTED: boolean = (() => {
+  try {
+    const probe = inflateSync(deflateSync(Buffer.from('x')), { info: true }) as unknown as {
+      buffer?: unknown;
+      engine?: { bytesWritten?: unknown };
+    };
+    return Buffer.isBuffer(probe.buffer) && typeof probe.engine?.bytesWritten === 'number';
+  } catch {
+    return false;
+  }
+})();
+
 function inflateAt(buf: Buffer, off: number, expectedSize: number, limit: number): { data: Buffer; next: number } {
   if (off >= limit) throw new Error('pack entry extends past trailer');
+  if (INFLATE_INFO_SUPPORTED) {
+    try {
+      const result = inflateSync(buf.subarray(off, limit), { info: true }) as unknown as {
+        buffer: Buffer;
+        engine: { bytesWritten: number };
+      };
+      if (result.buffer.length === expectedSize) {
+        // bytesWritten is the compressed bytes this stream consumed; a
+        // stream that ran past the trailer is corrupt, not a valid entry.
+        const next = off + result.engine.bytesWritten;
+        if (next > limit) throw new Error('inflated pack entry has wrong size');
+        return { data: result.buffer, next };
+      }
+      throw new Error('inflated pack entry has wrong size');
+    } catch (err) {
+      // A wrong-size result keeps the old error; a truncated/corrupt stream
+      // falls through to the binary search, which throws the old error too.
+      if (err instanceof Error && err.message === 'inflated pack entry has wrong size') throw err;
+    }
+  }
   let lo = off + 1;
   let hi = limit;
   let found = -1;
