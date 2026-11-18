@@ -19,11 +19,11 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /** The path of a request URL, or '/' when it does not parse (never a throw from a request). */
-function pathOf(req: IncomingMessage): string {
+function urlOf(req: IncomingMessage): URL | null {
   try {
-    return new URL(req.url ?? '/', 'http://entry').pathname;
+    return new URL(req.url ?? '/', 'http://entry');
   } catch {
-    return '/';
+    return null;
   }
 }
 
@@ -52,9 +52,13 @@ export function createApp(): Server {
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       try {
-        const path = pathOf(req);
+        // Parse the URL once here; handlers reuse ctx.url instead of
+        // parsing it again (a measurable cost at 2,000-request volume).
+        const url = urlOf(req);
+        const path = url?.pathname ?? '/';
         const method = (req.method ?? 'GET').toUpperCase();
         const ctx = buildCtx(req);
+        if (url) ctx.url = url;
 
         // The env's boot check calls this twice: 200 {"ok":true}.
         if (method === 'GET' && path === '/healthz') {

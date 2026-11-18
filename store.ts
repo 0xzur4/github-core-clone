@@ -22,6 +22,8 @@ export interface Ctx {
   viewer: User;
   authHeader: string;
   authed: boolean;
+  /** The request URL, parsed once by app.ts so handlers do not re-parse it. */
+  url?: URL;
 }
 
 export type ObjectType = 'commit' | 'tree' | 'blob' | 'tag';

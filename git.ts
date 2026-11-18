@@ -531,7 +531,9 @@ export async function handleGit(
 ): Promise<boolean> {
   let url: URL;
   try {
-    url = new URL(req.url ?? '/', 'http://entry');
+    // app.ts already parsed this URL into ctx.url; parse only as a fallback
+    // when handleGit is called without it.
+    url = ctx?.url ?? new URL(req.url ?? '/', 'http://entry');
   } catch {
     return false;
   }
