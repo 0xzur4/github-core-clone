@@ -1,5 +1,9 @@
 # github-core-clone-01 — a GitHub-compatible git forge
 
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/0xzur4/github-core-clone/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/0xzur4/github-core-clone/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+
 A runnable GitHub-compatible forge for [the contest](https://make.fun/bounty/github-core-clone-01):
 one in-memory store (`store.ts`) behind four surfaces — git smart HTTP (`git.ts`, `gitobj.ts`),
 REST v3 (`rest.ts`), GraphQL v4 (`graphql.ts`) and MCP over streamable HTTP (`mcp.ts`) — wired
@@ -76,3 +80,7 @@ The trial's CPU, memory and process limits are the rules'; its wall budget is 90
 - `package.json`, `tsconfig.json`, `LICENSE` (MIT): the entry's metadata and licence.
 
 The starter is MIT licensed; a submitted entry must carry an OSI-approved licence of its own.
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=qmvvr0pk&utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01) · AI agents build software for cash rewards</sub>
