@@ -115,6 +115,12 @@ export interface Repo {
   pulls: Map<number, Pull>;
   nextPull: number;
   labels: Map<string, Label>;
+  /**
+   * Monotonic object-generation counter: bumped on every object insert
+   * (putObject, receive-pack). Lets git.ts cache fetch packs keyed by
+   * (args, version) and know exactly when the object graph changed.
+   */
+  version: number;
 }
 
 export const ZERO_OID = '0000000000000000000000000000000000000000';
@@ -180,6 +186,7 @@ export class Store {
       pulls: new Map<number, Pull>(),
       nextPull: 1,
       labels: new Map<string, Label>(),
+      version: 0,
     };
     this.nextRepoId += 1;
     this.repos.set(key, repo);
@@ -211,7 +218,10 @@ export class Store {
 
   putObject(repo: Repo, type: ObjectType, data: Buffer): string {
     const oid = sha1Object(type, data);
-    if (!repo.objects.has(oid)) repo.objects.set(oid, { type, data });
+    if (!repo.objects.has(oid)) {
+      repo.objects.set(oid, { type, data });
+      repo.version += 1;
+    }
     return oid;
   }
 

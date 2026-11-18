@@ -352,6 +352,33 @@ interface FetchArgs {
   depth: number | null;
 }
 
+/**
+ * Cache of built fetch packs. A fetch pack is a pure function of the
+ * repo's object graph plus (wants, haves, shallow, depth); the graph is
+ * summarized by repo.version, bumped on every object insert, so a cached
+ * pack is valid exactly while the version matches. Keyed per Repo object
+ * (WeakMap) so a deleted-and-recreated repo never inherits a stale entry.
+ * The clone workload issues 50 identical depth-1 fetches in a row, so all
+ * but the first are cache hits; conformance fetches vary their args and
+ * mostly miss, which is correct, just uncached.
+ */
+const fetchPackCache = new WeakMap<Repo, Map<string, { version: number; pack: Buffer }>>();
+
+function cachedPack(repo: Repo, args: FetchArgs, plan: FetchPlan): Buffer {
+  const key = `${args.wants.join(',')}|${args.haves.join(',')}|${args.shallow.join(',')}|${args.depth === null ? '' : args.depth}`;
+  let perRepo = fetchPackCache.get(repo);
+  if (!perRepo) {
+    perRepo = new Map<string, { version: number; pack: Buffer }>();
+    fetchPackCache.set(repo, perRepo);
+  }
+  const hit = perRepo.get(key);
+  if (hit && hit.version === repo.version) return hit.pack;
+  const pack = buildPack(plan.objects);
+  if (perRepo.size > 128) perRepo.clear();
+  perRepo.set(key, { version: repo.version, pack });
+  return pack;
+}
+
 function handleFetchV2(store: Store, repo: Repo, args: FetchArgs): Buffer {
   const parts: Buffer[] = [];
   const plan = planFetch(store, repo, args.wants, args.haves, args.shallow, args.depth);
@@ -373,7 +400,7 @@ function handleFetchV2(store: Store, repo: Repo, args: FetchArgs): Buffer {
   }
   // packfile section (always present, even when empty)
   parts.push(pktLine('packfile\n'));
-  const pack = buildPack(plan.objects);
+  const pack = cachedPack(repo, args, plan);
   for (const pkt of sidebandPackets(pack, 1)) parts.push(pkt);
   parts.push(pktFlush());
   return Buffer.concat(parts);
@@ -390,7 +417,7 @@ function handleFetchV0(store: Store, repo: Repo, args: FetchArgs): Buffer {
   }
   for (const s of plan.shallow) parts.push(pktLine(`shallow ${s}\n`));
   for (const s of plan.unshallow) parts.push(pktLine(`unshallow ${s}\n`));
-  const pack = buildPack(plan.objects);
+  const pack = cachedPack(repo, args, plan);
   for (const pkt of sidebandPackets(pack, 1)) parts.push(pkt);
   parts.push(pktFlush());
   return Buffer.concat(parts);
@@ -467,9 +494,15 @@ function handleReceivePack(store: Store, repo: Repo, body: Buffer): Buffer {
   if (packBuf && packBuf.length > 0) {
     try {
       const parsed = parsePack(packBuf);
+      let inserted = false;
       for (const obj of parsed.objects) {
-        if (!repo.objects.has(obj.oid)) repo.objects.set(obj.oid, { type: obj.type, data: obj.data });
+        if (!repo.objects.has(obj.oid)) {
+          repo.objects.set(obj.oid, { type: obj.type, data: obj.data });
+          inserted = true;
+        }
       }
+      // The object graph changed: invalidate cached fetch packs.
+      if (inserted) repo.version += 1;
     } catch {
       unpackOk = false;
       unpackDetail = 'error';
