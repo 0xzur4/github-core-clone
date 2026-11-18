@@ -255,10 +255,14 @@ function countLines(buf: Buffer): number {
 }
 
 async function readBody(req: any): Promise<{ ok: boolean; body: any }> {
+  // Event-based read: the async-iterator form pays a promise + generator
+  // setup per chunk, which showed up in profiles on this hot path.
   const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on('end', () => resolve());
+    req.on('error', reject);
+  });
   if (chunks.length === 0) return { ok: true, body: {} };
   const text = Buffer.concat(chunks).toString("utf8");
   if (text.trim() === "") return { ok: true, body: {} };
@@ -275,7 +279,10 @@ export async function handleRest(req: any, res: any, store: any, ctx: any): Prom
   const rawUrl = req.url || "/";
   let url: URL;
   try {
-    url = new URL(rawUrl, "http://" + (req.headers.host || "localhost"));
+    // app.ts already parsed this URL into ctx.url (same pathname and query
+    // as a fresh parse; origin is built from the Host header below, not
+    // from the URL). Parse only as a fallback.
+    url = (ctx && ctx.url) || new URL(rawUrl, "http://" + (req.headers.host || "localhost"));
   } catch {
     return false;
   }
